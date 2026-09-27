@@ -1,0 +1,105 @@
+﻿<Window x:Class="ProjectName.Wpf.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ProjectName.Wpf.ViewModels"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        Title="Проект" Height="700" Width="900">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Блок 1: данные по проекту -->
+        <Border Grid.Row="0"
+                BorderBrush="#DDD" BorderThickness="1" CornerRadius="6"
+                Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Данные по проекту"
+                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                <UniformGrid Columns="2">
+                    <StackPanel Margin="0,0,8,4">
+                        <TextBlock Text="Название" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentProject.Name}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,0,4">
+                        <TextBlock Text="Ответственный" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentProject.Responsible}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,8,4">
+                        <TextBlock Text="Дата начала" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentProject.StartDate, StringFormat=d}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,0,4">
+                        <TextBlock Text="Дата окончания" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentProject.EndDate, StringFormat=d}"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,8,4">
+                        <TextBlock Text="Статус" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding CurrentProject.Status}"/>
+                    </StackPanel>
+                </UniformGrid>
+
+                <TextBlock Text="Описание" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding CurrentProject.Description}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Блок 2: задачи -->
+        <Border Grid.Row="1"
+                BorderBrush="#DDD" BorderThickness="1" CornerRadius="6"
+                Padding="12" Margin="0,0,0,12">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Задачи по этапам"
+                           FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding TaskItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:StageTaskPairViewModel}">
+                                <Border BorderBrush="#EEE" BorderThickness="1"
+                                        CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding StageName}"
+                                                       FontWeight="SemiBold" Foreground="#555"/>
+                                            <TextBlock Text="{Binding TaskName}"
+                                                       FontSize="14"/>
+                                            <TextBlock Text="{Binding Status}"
+                                                       Foreground="#888" FontSize="12"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="1"
+                                                Content="Открыть детали"
+                                                Padding="10,4"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding OpenDetailsCommand}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Блок 3: кнопка сохранить -->
+        <Button Grid.Row="2"
+                Content="Сохранить"
+                HorizontalAlignment="Right"
+                Padding="20,8"
+                Command="{Binding SaveCommand}"/>
+    </Grid>
+</Window>
