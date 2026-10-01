@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,7 +17,6 @@ public partial class TaskDetailsViewModel : ObservableObject
 {
     private readonly IProjectContext _context;
     private readonly IDraftStorage _draftStorage;
-    private bool _suppressSync;   // чтобы не дёргать SyncToApprovals во время InitializeAsync
 
     public Stage Stage { get; }
     public ProjectTask Task { get; }
@@ -24,14 +24,7 @@ public partial class TaskDetailsViewModel : ObservableObject
     public string StageName => Stage.Name;
     public string TaskName => Task.Name;
 
-    public TechnicalSpecialistAgreementViewModel TechnicalSpecialist { get; }
-    public GroupLeadAgreementViewModel GroupLead { get; }
-    public BlockLeadAgreementViewModel BlockLead { get; }
-
-    public IReadOnlyList<IAgreementBlock> Blocks { get; }
-
-    [ObservableProperty]
-    private IAgreementBlock? _selectedBlock;
+    public ObservableCollection<RoleTabViewModel> RoleTabs { get; } = new();
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
@@ -50,80 +43,91 @@ public partial class TaskDetailsViewModel : ObservableObject
         Stage = stage;
         Task = task;
 
-        TechnicalSpecialist = new TechnicalSpecialistAgreementViewModel(FindApproval(AgreementRole.TechnicalSpecialist));
-        GroupLead = new GroupLeadAgreementViewModel(FindApproval(AgreementRole.GroupLead));
-        BlockLead = new BlockLeadAgreementViewModel(FindApproval(AgreementRole.BlockLead));
-
-        Blocks = new IAgreementBlock[] { TechnicalSpecialist, GroupLead, BlockLead };
-        SelectedBlock = Blocks[0];
-
-        foreach (var block in Blocks)
-            ((ObservableObject)block).PropertyChanged += OnBlockPropertyChanged;
-
+        BuildTabs();
         RecalculateCanConfirm();
     }
 
-    private ApprovalInfo? FindApproval(AgreementRole role)
-        => Task.Approvals.FirstOrDefault(a => a.Role == role);
-
-    // ----- Инициализация: подтягиваем черновик, если в памяти данных нет -----
-
-    /// <summary>
-    /// Вызывается из окна после Loaded. Логика:
-    /// 1. Если в памяти (Task.Approvals) уже есть данные — используем их (это сессионное состояние).
-    /// 2. Иначе пробуем прочитать {pairGuid}.json — данные попадают и в блоки, и в Task.Approvals.
-    /// 3. Иначе оставляем пустые значения (в будущем здесь будет загрузка из БД).
-    /// </summary>
-    public async Task InitializeAsync()
+    private void BuildTabs()
     {
-        if (Task.Approvals.Count > 0) return;
-
-        var draft = await _draftStorage.TryLoadPairAsync(_context.CurrentProject.Id, Task.PairId);
-        if (draft is null || draft.Blocks.Count == 0) return;
-
-        _suppressSync = true;
-        foreach (var block in Blocks)
+        // Порядок ролей в UI — фиксированный.
+        var roles = new (AgreementRole Role, string Display)[]
         {
-            if (draft.Blocks.TryGetValue(block.Role.ToString(), out var data) &&
-                data is Dictionary<string, object> dict)
-            {
-                block.LoadFrom(dict);
-            }
-        }
-        _suppressSync = false;
+            (AgreementRole.TechnicalSpecialist, "Технический специалист"),
+            (AgreementRole.GroupLead,           "Руководитель группы"),
+            (AgreementRole.BlockLead,           "Руководитель блока"),
+        };
 
-        SyncToApprovals();
+        foreach (var (role, display) in roles)
+        {
+            var roleTab = new RoleTabViewModel(role, display);
+
+            foreach (var variant in _context.CurrentProject.AvailableVariants.OrderBy(v => v.Order))
+            {
+                if (!Task.Variants.TryGetValue(variant, out var taskModel)) continue;
+                if (!taskModel.Blocks.TryGetValue(role, out var modelBlock)) continue;
+
+                var vmBlock = CreateBlockVm(role, modelBlock);
+                ((ObservableObject)vmBlock).PropertyChanged += OnBlockPropertyChanged;
+
+                roleTab.Variants.Add(new VariantBlockViewModel(variant, vmBlock));
+            }
+
+            RoleTabs.Add(roleTab);
+        }
     }
 
-    // ----- Реакция на изменения во вкладках -----
+    private static AgreementBlockViewModel CreateBlockVm(AgreementRole role, IAgreementBlock model) => role switch
+    {
+        AgreementRole.TechnicalSpecialist => new TechnicalSpecialistAgreementViewModel(model),
+        AgreementRole.GroupLead => new GroupLeadAgreementViewModel(model),
+        AgreementRole.BlockLead => new BlockLeadAgreementViewModel(model),
+        _ => throw new ArgumentOutOfRangeException(nameof(role)),
+    };
 
     private void OnBlockPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IAgreementBlock.IsAgreed))
             RecalculateCanConfirm();
-
-        if (!_suppressSync)
-            SyncToApprovals();
     }
 
     private void RecalculateCanConfirm()
-        => CanConfirm = Blocks.All(b => b.IsAgreed);
-
-    /// <summary>Переносит состояние блоков в Task.Approvals (in-memory persist).</summary>
-    private void SyncToApprovals()
     {
-        Task.Approvals.Clear();
-        foreach (var block in Blocks)
-        {
-            var d = block.ToDictionary();
-            Task.Approvals.Add(new ApprovalInfo
-            {
-                Role = block.Role,
-                IsAgreed = (bool)d["IsAgreed"],
-                Comment = (string)d["Comment"],
-            });
-        }
+        var anyBlocks = RoleTabs.Count > 0 && RoleTabs.All(t => t.Variants.Count > 0);
+        CanConfirm = anyBlocks && RoleTabs
+            .SelectMany(t => t.Variants)
+            .All(v => v.Block.IsAgreed);
     }
+
+    // ----- Инициализация: подтягиваем черновик, если в памяти пусто -----
+
+    public async Task InitializeAsync()
+    {
+        if (HasAnyDataInMemory()) return;
+
+        var draft = await _draftStorage.TryLoadPairAsync(_context.CurrentProject.Id, Task.PairId);
+        if (draft is null || draft.Variants.Count == 0) return;
+
+        foreach (var roleTab in RoleTabs)
+        {
+            foreach (var variantBlock in roleTab.Variants)
+            {
+                var variantKey = variantBlock.Variant.Id.ToString("D");
+                if (!draft.Variants.TryGetValue(variantKey, out var vd)) continue;
+
+                var roleKey = roleTab.Role.ToString();
+                if (!vd.Blocks.TryGetValue(roleKey, out var data)) continue;
+                if (data is not Dictionary<string, object> dict) continue;
+
+                variantBlock.Block.LoadFrom(dict);
+            }
+        }
+
+        RecalculateCanConfirm();
+    }
+
+    private bool HasAnyDataInMemory()
+        => Task.Variants.Values.Any(vm =>
+               vm.Blocks.Values.Any(b => b.IsAgreed || !string.IsNullOrEmpty(b.Comment)));
 
     // ----- Команды -----
 
@@ -131,38 +135,14 @@ public partial class TaskDetailsViewModel : ObservableObject
     private async Task SaveDraftAsync()
     {
         var savedAt = DateTimeOffset.UtcNow;
-        SyncToApprovals();
         await _draftStorage.SaveProjectAsync(_context.CurrentProject, savedAt);
-        await _draftStorage.SavePairAsync(_context.CurrentProject, Stage, Task, Blocks, savedAt);
+        await _draftStorage.SavePairAsync(_context.CurrentProject, Stage, Task, savedAt);
     }
 
     [RelayCommand(CanExecute = nameof(CanConfirm))]
     private void Confirm()
     {
-        SyncToApprovals();
         Task.Status = TaskStatus.Completed;
         RequestClose?.Invoke(this, true);
-    }
-
-    // ----- Автосохранение при закрытии окна -----
-
-    /// <summary>
-    /// Синхронный вызов из Window.Closing. Не используем async — WPF Closing не поддерживает await.
-    /// Файлы маленькие, локальная запись быстрая.
-    /// </summary>
-    public void SaveDraftOnClose()
-    {
-        try
-        {
-            var savedAt = DateTimeOffset.UtcNow;
-            SyncToApprovals();
-
-            _draftStorage.SaveProjectAsync(_context.CurrentProject, savedAt).GetAwaiter().GetResult();
-            _draftStorage.SavePairAsync(_context.CurrentProject, Stage, Task, Blocks, savedAt).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // По требованию — пока не уведомляем пользователя.
-        }
     }
 }

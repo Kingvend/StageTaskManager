@@ -11,4 +11,6 @@ public class Project
     public string Responsible { get; set; } = string.Empty;
 
     public List<Stage> Stages { get; set; } = new();
+
+    public List<Variant> AvailableVariants { get; set; } = new();
 }

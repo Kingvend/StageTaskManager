@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="ViewModels\AgreementBlocks\GroupLeadAgreementViewModel.cs" />
+    <Compile Remove="ViewModels\AgreementBlocks\TechnicalSpecialistAgreementViewModel.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
   </ItemGroup>

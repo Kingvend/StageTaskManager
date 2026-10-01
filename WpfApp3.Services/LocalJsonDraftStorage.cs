@@ -48,6 +48,9 @@ public class LocalJsonDraftStorage : IDraftStorage
             EndDate = project.EndDate,
             Status = project.Status,
             Responsible = project.Responsible,
+            AvailableVariants = project.AvailableVariants
+        .Select(v => new VariantSnapshot { Id = v.Id, Name = v.Name, Order = v.Order })
+        .ToList(),
         };
 
         await using var stream = File.Create(path);
@@ -55,61 +58,67 @@ public class LocalJsonDraftStorage : IDraftStorage
     }
 
     public async Task SavePairAsync(
-        Project project,
-        Stage stage,
-        ProjectTask task,
-        IReadOnlyCollection<IAgreementBlock> blocks,
-        DateTimeOffset savedAt,
-        CancellationToken ct = default)
+    Project project,
+    Stage stage,
+    ProjectTask task,
+    DateTimeOffset savedAt,
+    CancellationToken ct = default)
     {
         var folder = ProjectFolder(project.Id);
         Directory.CreateDirectory(folder);
 
-        // Словарь "Role -> dictionary полей вкладки" — единый контракт для будущей БД/HTTP.
-        var blocksDict = blocks.ToDictionary(
-            keySelector: b => b.Role.ToString(),
-            elementSelector: b => (object)b.ToDictionary());
+        var variantsDict = task.Variants.ToDictionary(
+            keySelector: kv => kv.Key.Id.ToString("D"),
+            elementSelector: kv => new VariantDraftDto
+            {
+                Id = kv.Key.Id,
+                Name = kv.Key.Name,
+                Order = kv.Key.Order,
+                Blocks = kv.Value.Blocks.ToDictionary(
+                    bk => bk.Key.ToString(),
+                    bk => (object)bk.Value.ToDictionary()),
+            });
 
         var dto = new PairDraftDto
         {
             PairId = task.PairId,
             ProjectId = project.Id,
             SavedAt = savedAt,
-            Stage = new StageSnapshot
-            {
-                Name = stage.Name,
-                OrderNumber = stage.OrderNumber,
-            },
+            Stage = new StageSnapshot { Name = stage.Name, OrderNumber = stage.OrderNumber },
             Task = new TaskSnapshot
             {
                 Name = task.Name,
                 Description = task.Description,
                 Status = task.Status,
             },
-            Blocks = blocksDict,
+            Variants = variantsDict,
         };
 
         var path = Path.Combine(folder, $"{task.PairId:D}.json");
 
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct);
+        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct).ConfigureAwait(false);
     }
 
     public async Task<PairDraftDto?> TryLoadPairAsync(
-        Guid projectId, Guid pairId, CancellationToken ct = default)
+    Guid projectId, Guid pairId, CancellationToken ct = default)
     {
         var path = Path.Combine(ProjectFolder(projectId), $"{pairId:D}.json");
         if (!File.Exists(path)) return null;
 
         await using var stream = File.OpenRead(path);
-        var dto = await JsonSerializer.DeserializeAsync<PairDraftDto>(stream, JsonOptions, ct);
+        var dto = await JsonSerializer.DeserializeAsync<PairDraftDto>(stream, JsonOptions, ct)
+            .ConfigureAwait(false);
         if (dto is null) return null;
 
-        // JsonSerializer кладёт в Dictionary<string, object> значения типа JsonElement.
-        // Приводим их к примитивам, чтобы блоки могли просто читать IsAgreed/Comment.
-        dto.Blocks = dto.Blocks.ToDictionary(
-    kv => kv.Key,
-    kv => (object)ConvertBlock((JsonElement)kv.Value));
+        foreach (var vd in dto.Variants.Values)
+        {
+            vd.Blocks = vd.Blocks.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value is JsonElement el
+                    ? (object)ConvertBlock(el)
+                    : kv.Value);
+        }
 
         return dto;
     }

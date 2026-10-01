@@ -11,10 +11,8 @@ public interface IDraftStorage
         Project project,
         Stage stage,
         ProjectTask task,
-        IReadOnlyCollection<IAgreementBlock> blocks,
         DateTimeOffset savedAt,
         CancellationToken ct = default);
 
-    /// <summary>Читает {pairGuid}.json, если он есть. Возвращает null, если файла нет.</summary>
     Task<PairDraftDto?> TryLoadPairAsync(Guid projectId, Guid pairId, CancellationToken ct = default);
 }

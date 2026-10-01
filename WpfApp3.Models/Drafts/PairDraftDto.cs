@@ -1,6 +1,5 @@
 ﻿namespace ProjectName.Models.Drafts;
 
-/// <summary>Содержимое {pairGuid}.json — данные одной пары «этап-задача» со всеми вкладками.</summary>
 public class PairDraftDto
 {
     public Guid PairId { get; set; }
@@ -10,7 +9,17 @@ public class PairDraftDto
     public StageSnapshot Stage { get; set; } = new();
     public TaskSnapshot Task { get; set; } = new();
 
-    /// <summary>Ключ — AgreementRole.ToString(), значение — результат IAgreementBlock.ToDictionary().</summary>
+    /// <summary>Ключ — Variant.Id.ToString("D"), значение — данные варианта.</summary>
+    public Dictionary<string, VariantDraftDto> Variants { get; set; } = new();
+}
+
+public class VariantDraftDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int Order { get; set; }
+
+    /// <summary>Ключ — AgreementRole.ToString(), значение — IAgreementBlock.ToDictionary().</summary>
     public Dictionary<string, object> Blocks { get; set; } = new();
 }
 
