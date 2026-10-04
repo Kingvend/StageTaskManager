@@ -1,39 +1,61 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ProjectName.Models;
 using ProjectName.Services;
-using TaskStatus = ProjectName.Models.TaskStatus;
 
 namespace ProjectName.Wpf.ViewModels;
 
 public partial class StageTaskPairViewModel : ObservableObject
 {
     private readonly IDialogService _dialogService;
+    private readonly ICalculationService _calculationService;
 
-    public Stage Stage { get; }
-    public ProjectTask Task { get; }
+    public StageTaskPair Pair { get; }
 
-    public string StageName => Stage.Name;
-    public string TaskName => Task.Name;
-    public TaskStatus Status => Task.Status;
+    public string StageName => Pair.Stage.Name;
+    public string TaskName => Pair.Task.Name;
+    public PairStatus Status => Pair.Status;
 
-    /// <summary>Уведомляет MainViewModel, что статус задачи изменился.</summary>
     public event EventHandler? StatusChanged;
 
-    public StageTaskPairViewModel(Stage stage, ProjectTask task, IDialogService dialogService)
+    public StageTaskPairViewModel(
+        StageTaskPair pair,
+        IDialogService dialogService,
+        ICalculationService calculationService)
     {
-        Stage = stage;
-        Task = task;
+        Pair = pair;
         _dialogService = dialogService;
+        _calculationService = calculationService;
     }
 
     [RelayCommand]
-    private void OpenDetails()
+    private async Task OpenDetailsAsync()
     {
-        if (_dialogService.ShowTaskDetails(Stage, Task))
+        if (Pair.CalculationId is null)
         {
-            OnPropertyChanged(nameof(Status));
-            StatusChanged?.Invoke(this, EventArgs.Empty);
+            _dialogService.ShowMessage(
+                "Сначала сохраните расчёт (кнопка «Сохранить расчёт» в блоке данных проекта).",
+                "Расчёт не сохранён");
+            return;
         }
+
+        _dialogService.ShowTaskDetails(Pair);
+
+        OnPropertyChanged(nameof(Status));
+        SavePairCommand.NotifyCanExecuteChanged();
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool CanSavePair() => Pair.Status == PairStatus.Completed;
+
+    [RelayCommand(CanExecute = nameof(CanSavePair))]
+    private async Task SavePairAsync()
+    {
+        await _calculationService.SavePairAsync(Pair);
+        _dialogService.ShowMessage(
+            $"Данные пары «{Pair.Stage.Name} / {Pair.Task.Name}» сохранены в БД.",
+            "Сохранение");
     }
 }

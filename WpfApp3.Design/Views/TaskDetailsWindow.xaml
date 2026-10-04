@@ -3,7 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ProjectName.Wpf.Views"
         xmlns:vm="clr-namespace:ProjectName.Wpf.ViewModels"
-        Title="Детали задачи" Width="720" Height="620"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:TaskDetailsViewModel}"
+        Title="Детали задачи" Width="760" Height="640"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="16">
         <Grid.RowDefinitions>
@@ -12,6 +16,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- Заголовок -->
         <StackPanel Grid.Row="0">
             <TextBlock Text="{Binding StageName}" FontWeight="SemiBold" Foreground="#666"/>
             <TextBlock Text="{Binding TaskName}" FontSize="18" FontWeight="Bold"/>
@@ -46,6 +51,7 @@
             </TabControl.ContentTemplate>
         </TabControl>
 
+        <!-- Кнопки -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Сохранить черновик"

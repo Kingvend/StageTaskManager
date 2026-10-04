@@ -1,15 +1,13 @@
 ﻿namespace ProjectName.Models;
 
+/// <summary>
+/// Задача из внешней БД. Имя класса <c>Task</c> затеняет <c>System.Threading.Tasks.Task</c>,
+/// поэтому в местах, где нужны оба, используется полное имя <c>System.Threading.Tasks.Task</c>.
+/// </summary>
 public class ProjectTask
 {
-    public Guid PairId { get; set; } = Guid.NewGuid();
+    public long Id { get; set; }
+    public long StageId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public TaskStatus Status { get; set; }
-
-    /// <summary>Согласования по вариантам исполнения.</summary>
-    public Dictionary<Variant, TaskModel> Variants { get; set; } = new();
-
-    public bool IsFullyAgreed =>
-        Variants.Count > 0 && Variants.Values.All(vm => vm.IsFullyAgreed);
 }

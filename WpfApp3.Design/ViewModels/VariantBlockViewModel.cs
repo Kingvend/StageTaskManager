@@ -4,6 +4,7 @@ using ProjectName.Wpf.ViewModels.AgreementBlocks;
 
 namespace ProjectName.Wpf.ViewModels;
 
+/// <summary>Вкладка варианта внутри вкладки роли.</summary>
 public partial class VariantBlockViewModel : ObservableObject
 {
     public Variant Variant { get; }

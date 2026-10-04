@@ -4,6 +4,7 @@ using ProjectName.Models;
 
 namespace ProjectName.Wpf.ViewModels;
 
+/// <summary>Вкладка роли (внешний TabControl в окне деталей).</summary>
 public partial class RoleTabViewModel : ObservableObject
 {
     public AgreementRole Role { get; }

@@ -25,8 +25,9 @@ public partial class App : Application
     private static void ConfigureServices(IServiceCollection services)
     {
         // Services
-        services.AddSingleton<IProjectService, ProjectService>();
-        services.AddSingleton<IProjectContext, ProjectContext>();
+        services.AddSingleton<IExternalCatalogService, ExternalCatalogService>();
+        services.AddSingleton<ICalculationContext, CalculationContext>();
+        services.AddSingleton<ICalculationService, CalculationService>();
         services.AddSingleton<IDraftStorage, LocalJsonDraftStorage>();
         services.AddSingleton<IDialogService, DialogService>();
 

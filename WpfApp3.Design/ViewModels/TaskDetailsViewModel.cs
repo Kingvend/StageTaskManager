@@ -1,28 +1,30 @@
-﻿using System;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using ProjectName.Models;
+using ProjectName.Models.Drafts;
+using ProjectName.Services;
+using ProjectName.Wpf.ViewModels.AgreementBlocks;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using ProjectName.Models;
-using ProjectName.Services;
-using ProjectName.Wpf.ViewModels.AgreementBlocks;
-using TaskStatus = ProjectName.Models.TaskStatus;
 
 namespace ProjectName.Wpf.ViewModels;
 
 public partial class TaskDetailsViewModel : ObservableObject
 {
-    private readonly IProjectContext _context;
+    private readonly ICalculationContext _context;
+    private readonly ICalculationService _calculationService;
     private readonly IDraftStorage _draftStorage;
 
-    public Stage Stage { get; }
-    public ProjectTask Task { get; }
+    private bool _initialized;
 
-    public string StageName => Stage.Name;
-    public string TaskName => Task.Name;
+    public StageTaskPair Pair { get; }
+
+    public string StageName => Pair.Stage.Name;
+    public string TaskName => Pair.Task.Name;
 
     public ObservableCollection<RoleTabViewModel> RoleTabs { get; } = new();
 
@@ -33,23 +35,24 @@ public partial class TaskDetailsViewModel : ObservableObject
     public event EventHandler<bool>? RequestClose;
 
     public TaskDetailsViewModel(
-        IProjectContext context,
+        ICalculationContext context,
+        ICalculationService calculationService,
         IDraftStorage draftStorage,
-        Stage stage,
-        ProjectTask task)
+        StageTaskPair pair)
     {
         _context = context;
+        _calculationService = calculationService;
         _draftStorage = draftStorage;
-        Stage = stage;
-        Task = task;
+        Pair = pair;
 
         BuildTabs();
         RecalculateCanConfirm();
     }
 
+    // ----- Сборка вкладок -----
+
     private void BuildTabs()
     {
-        // Порядок ролей в UI — фиксированный.
         var roles = new (AgreementRole Role, string Display)[]
         {
             (AgreementRole.TechnicalSpecialist, "Технический специалист"),
@@ -61,10 +64,19 @@ public partial class TaskDetailsViewModel : ObservableObject
         {
             var roleTab = new RoleTabViewModel(role, display);
 
-            foreach (var variant in _context.CurrentProject.AvailableVariants.OrderBy(v => v.Order))
+            foreach (var variant in Pair.AvailableVariants.OrderBy(v => v.Order))
             {
-                if (!Task.Variants.TryGetValue(variant, out var taskModel)) continue;
-                if (!taskModel.Blocks.TryGetValue(role, out var modelBlock)) continue;
+                // Гарантируем, что под этот вариант в памяти есть TaskModel и блок роли.
+                if (!Pair.VariantData.TryGetValue(variant, out var taskModel))
+                {
+                    taskModel = new TaskModel { Variant = variant };
+                    Pair.VariantData[variant] = taskModel;
+                }
+                if (!taskModel.Blocks.TryGetValue(role, out var modelBlock))
+                {
+                    modelBlock = new AgreementBlock { Role = role };
+                    taskModel.Blocks[role] = modelBlock;
+                }
 
                 var vmBlock = CreateBlockVm(role, modelBlock);
                 ((ObservableObject)vmBlock).PropertyChanged += OnBlockPropertyChanged;
@@ -84,65 +96,131 @@ public partial class TaskDetailsViewModel : ObservableObject
         _ => throw new ArgumentOutOfRangeException(nameof(role)),
     };
 
+    // ----- Реакция на изменения -----
+
     private void OnBlockPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IAgreementBlock.IsAgreed))
             RecalculateCanConfirm();
+
+        // Изменились данные пары → статус переходит в InProgress, если был Completed или NotStarted.
+        if (Pair.Status != PairStatus.InProgress)
+            Pair.Status = PairStatus.InProgress;
     }
 
     private void RecalculateCanConfirm()
-    {
-        var anyBlocks = RoleTabs.Count > 0 && RoleTabs.All(t => t.Variants.Count > 0);
-        CanConfirm = anyBlocks && RoleTabs
-            .SelectMany(t => t.Variants)
-            .All(v => v.Block.IsAgreed);
-    }
+        => CanConfirm = RoleTabs.Count > 0
+                     && RoleTabs.All(t => t.Variants.Count > 0)
+                     && RoleTabs.SelectMany(t => t.Variants).All(v => v.Block.IsAgreed);
 
-    // ----- Инициализация: подтягиваем черновик, если в памяти пусто -----
+    private bool HasDataInMemory() =>
+        Pair.VariantData.Values.Any(vm =>
+            vm.Blocks.Values.Any(b => b.IsAgreed || !string.IsNullOrEmpty(b.Comment)));
+
+    // ----- Ленивая инициализация -----
 
     public async Task InitializeAsync()
     {
-        if (HasAnyDataInMemory()) return;
+        if (_initialized) return;
+        _initialized = true;
 
-        var draft = await _draftStorage.TryLoadPairAsync(_context.CurrentProject.Id, Task.PairId);
-        if (draft is null || draft.Variants.Count == 0) return;
+        // In-memory всегда побеждает: если в сессии уже что-то заполнено — не трогаем.
+        if (HasDataInMemory()) return;
 
-        foreach (var roleTab in RoleTabs)
+        // Из БД (ленивая загрузка пары с VariantData).
+        StageTaskPair? fromDb = null;
+        if (Pair.Id != Guid.Empty)
+            fromDb = await _calculationService.GetPairAsync(Pair.Id);
+
+        // Из черновика.
+        PairDraftDto? draft = null;
+        if (Pair.CalculationId is not null && Pair.DraftId is not null)
+            draft = await _draftStorage.TryLoadPairAsync(Pair.CalculationId.Value, Pair.DraftId.Value);
+
+        // Выбор более свежего источника.
+        if (fromDb is not null && draft is not null)
         {
-            foreach (var variantBlock in roleTab.Variants)
-            {
-                var variantKey = variantBlock.Variant.Id.ToString("D");
-                if (!draft.Variants.TryGetValue(variantKey, out var vd)) continue;
-
-                var roleKey = roleTab.Role.ToString();
-                if (!vd.Blocks.TryGetValue(roleKey, out var data)) continue;
-                if (data is not Dictionary<string, object> dict) continue;
-
-                variantBlock.Block.LoadFrom(dict);
-            }
+            if ((draft.SavedAt) >= (fromDb.UpdatedAt ?? DateTimeOffset.MinValue))
+                ApplyDraft(draft);
+            else
+                ApplyDbPair(fromDb);
+        }
+        else if (draft is not null)
+        {
+            ApplyDraft(draft);
+        }
+        else if (fromDb is not null)
+        {
+            ApplyDbPair(fromDb);
         }
 
         RecalculateCanConfirm();
     }
 
-    private bool HasAnyDataInMemory()
-        => Task.Variants.Values.Any(vm =>
-               vm.Blocks.Values.Any(b => b.IsAgreed || !string.IsNullOrEmpty(b.Comment)));
+    private void ApplyDbPair(StageTaskPair source)
+    {
+        foreach (var (variant, taskModel) in source.VariantData)
+        {
+            if (!Pair.VariantData.TryGetValue(variant, out var target)) continue;
+            foreach (var (role, block) in taskModel.Blocks)
+            {
+                if (!target.Blocks.TryGetValue(role, out var targetBlock)) continue;
+                targetBlock.LoadFrom(block.ToDictionary());
+            }
+        }
+
+        // Обновим VM-обёртки.
+        ReloadBlockViewModels();
+    }
+
+    private void ApplyDraft(PairDraftDto dto)
+    {
+        foreach (var roleTab in RoleTabs)
+        {
+            foreach (var variantBlock in roleTab.Variants)
+            {
+                if (!dto.Variants.TryGetValue(variantBlock.Variant.Id, out var vd)) continue;
+                if (!vd.Blocks.TryGetValue(roleTab.Role.ToString(), out var data)) continue;
+                if (data is not Dictionary<string, object> dict) continue;
+
+                variantBlock.Block.LoadFrom(dict);
+            }
+        }
+    }
+
+    private void ReloadBlockViewModels()
+    {
+        foreach (var roleTab in RoleTabs)
+            foreach (var variantBlock in roleTab.Variants)
+            {
+                variantBlock.Block.LoadFrom(variantBlock.Block.ToDictionary());
+            }
+    }
 
     // ----- Команды -----
 
+    /// <summary>Сохраняет черновик пары. Доступно, только если расчёт сохранён в БД.</summary>
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
+        if (Pair.CalculationId is null || Pair.DraftId is null) return;
+        if (_context.Current is null) return;
+
         var savedAt = DateTimeOffset.UtcNow;
-        await _draftStorage.SaveProjectAsync(_context.CurrentProject, savedAt);
-        await _draftStorage.SavePairAsync(_context.CurrentProject, Stage, Task, savedAt);
+
+        // calculation.json — создаётся один раз, при первом сохранении черновика.
+        // Метод внутри уже проверяет File.Exists и не перезаписывает существующий файл.
+        await _draftStorage.SaveCalculationAsync(_context.Current, savedAt);
+
+        // {PairDraftId}.json — перезаписывается каждый раз.
+        await _draftStorage.SavePairAsync(Pair, savedAt);
     }
 
     [RelayCommand(CanExecute = nameof(CanConfirm))]
-    private void Confirm()
+    private async Task ConfirmAsync()
     {
-        Task.Status = TaskStatus.Completed;
+        await SaveDraftAsync();
+        Pair.Status = PairStatus.Completed;
         RequestClose?.Invoke(this, true);
     }
 }

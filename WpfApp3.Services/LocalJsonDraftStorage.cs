@@ -1,17 +1,17 @@
-﻿using ProjectName.Models;
-using ProjectName.Models.Drafts;
-using System.IO;
+﻿using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ProjectName.Models;
+using ProjectName.Models.Drafts;
 
 namespace ProjectName.Services;
 
 public class LocalJsonDraftStorage : IDraftStorage
 {
-    private const string AppFolderName = "ProjectName";   // папка программы в «Документах»
+    private const string AppFolderName = "ProjectName";
     private const string DraftsFolderName = "drafts";
-    private const string ProjectFileName = "project.json";
+    private const string CalculationFile = "calculation.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,56 +20,69 @@ public class LocalJsonDraftStorage : IDraftStorage
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private static string RootFolder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        AppFolderName,
-        DraftsFolderName);
+    private static string RootFolder =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            AppFolderName,
+            DraftsFolderName);
 
-    private static string ProjectFolder(Guid projectId)
-        => Path.Combine(RootFolder, projectId.ToString("D"));
+    private static string CalculationFolder(Guid calculationId)
+        => Path.Combine(RootFolder, calculationId.ToString("D"));
 
-    public async Task SaveProjectAsync(Project project, DateTimeOffset savedAt, CancellationToken ct = default)
+    // ----- Save: calculation -----
+
+    public async Task SaveCalculationAsync(
+        ProjectCalculation calculation, DateTimeOffset savedAt, CancellationToken ct = default)
     {
-        var folder = ProjectFolder(project.Id);
+        if (calculation.Id is null || calculation.Id == Guid.Empty)
+            throw new InvalidOperationException(
+                "Нельзя сохранить черновик расчёта, пока расчёт не сохранён в БД (Id отсутствует).");
+
+        var folder = CalculationFolder(calculation.Id.Value);
         Directory.CreateDirectory(folder);
 
-        var path = Path.Combine(folder, ProjectFileName);
-
-        // project.json пишется один раз — при первом сохранении черновика.
+        var path = Path.Combine(folder, CalculationFile);
         if (File.Exists(path)) return;
 
-        var dto = new ProjectDraftDto
+        var dto = new CalculationDraftDto
         {
-            ProjectId = project.Id,
+            CalculationId = calculation.Id.Value,
             SavedAt = savedAt,
-            Name = project.Name,
-            Description = project.Description,
-            StartDate = project.StartDate,
-            EndDate = project.EndDate,
-            Status = project.Status,
-            Responsible = project.Responsible,
-            AvailableVariants = project.AvailableVariants
-        .Select(v => new VariantSnapshot { Id = v.Id, Name = v.Name, Order = v.Order })
-        .ToList(),
+            Project = new ProjectSnapshot
+            {
+                Id = calculation.Project.Id,
+                Name = calculation.Project.Name,
+                Description = calculation.Project.Description,
+                StartDate = calculation.Project.StartDate,
+                EndDate = calculation.Project.EndDate,
+                Status = calculation.Project.Status,
+                Responsible = calculation.Project.Responsible,
+            },
+            AvailableVariants = calculation.AvailableVariants
+                .OrderBy(v => v.Order)
+                .Select(v => new VariantSnapshot { Id = v.Id, Name = v.Name, Order = v.Order })
+                .ToList(),
         };
 
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct);
+        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct).ConfigureAwait(false);
     }
 
+    // ----- Save: pair -----
+
     public async Task SavePairAsync(
-    Project project,
-    Stage stage,
-    ProjectTask task,
-    DateTimeOffset savedAt,
-    CancellationToken ct = default)
+        StageTaskPair pair, DateTimeOffset savedAt, CancellationToken ct = default)
     {
-        var folder = ProjectFolder(project.Id);
+        if (pair.CalculationId is null || pair.DraftId is null)
+            throw new InvalidOperationException(
+                "Нельзя сохранить черновик пары: расчёт ещё не сохранён в БД.");
+
+        var folder = CalculationFolder(pair.CalculationId.Value);
         Directory.CreateDirectory(folder);
 
-        var variantsDict = task.Variants.ToDictionary(
-            keySelector: kv => kv.Key.Id.ToString("D"),
-            elementSelector: kv => new VariantDraftDto
+        var variantsDict = pair.VariantData.ToDictionary(
+            kv => kv.Key.Id,
+            kv => new VariantDraftDto
             {
                 Id = kv.Key.Id,
                 Name = kv.Key.Name,
@@ -81,29 +94,51 @@ public class LocalJsonDraftStorage : IDraftStorage
 
         var dto = new PairDraftDto
         {
-            PairId = task.PairId,
-            ProjectId = project.Id,
+            PairId = pair.Id,
+            DraftId = pair.DraftId.Value,
+            CalculationId = pair.CalculationId.Value,
             SavedAt = savedAt,
-            Stage = new StageSnapshot { Name = stage.Name, OrderNumber = stage.OrderNumber },
+            Status = pair.Status,
+            Stage = new StageSnapshot
+            {
+                Id = pair.Stage.Id,
+                Name = pair.Stage.Name,
+                OrderNumber = pair.Stage.OrderNumber,
+            },
             Task = new TaskSnapshot
             {
-                Name = task.Name,
-                Description = task.Description,
-                Status = task.Status,
+                Id = pair.Task.Id,
+                Name = pair.Task.Name,
+                Description = pair.Task.Description,
             },
             Variants = variantsDict,
         };
 
-        var path = Path.Combine(folder, $"{task.PairId:D}.json");
+        var path = Path.Combine(folder, $"{pair.DraftId.Value:D}.json");
 
         await using var stream = File.Create(path);
         await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct).ConfigureAwait(false);
     }
 
-    public async Task<PairDraftDto?> TryLoadPairAsync(
-    Guid projectId, Guid pairId, CancellationToken ct = default)
+    // ----- Load: calculation -----
+
+    public async Task<CalculationDraftDto?> TryLoadCalculationAsync(
+        Guid calculationId, CancellationToken ct = default)
     {
-        var path = Path.Combine(ProjectFolder(projectId), $"{pairId:D}.json");
+        var path = Path.Combine(CalculationFolder(calculationId), CalculationFile);
+        if (!File.Exists(path)) return null;
+
+        await using var stream = File.OpenRead(path);
+        return await JsonSerializer.DeserializeAsync<CalculationDraftDto>(stream, JsonOptions, ct)
+            .ConfigureAwait(false);
+    }
+
+    // ----- Load: pair -----
+
+    public async Task<PairDraftDto?> TryLoadPairAsync(
+        Guid calculationId, Guid draftId, CancellationToken ct = default)
+    {
+        var path = Path.Combine(CalculationFolder(calculationId), $"{draftId:D}.json");
         if (!File.Exists(path)) return null;
 
         await using var stream = File.OpenRead(path);
@@ -111,13 +146,12 @@ public class LocalJsonDraftStorage : IDraftStorage
             .ConfigureAwait(false);
         if (dto is null) return null;
 
+        // JsonElement → примитивы, чтобы VM-обёртки читали IsAgreed/Comment напрямую.
         foreach (var vd in dto.Variants.Values)
         {
             vd.Blocks = vd.Blocks.ToDictionary(
                 kv => kv.Key,
-                kv => kv.Value is JsonElement el
-                    ? (object)ConvertBlock(el)
-                    : kv.Value);
+                kv => kv.Value is JsonElement el ? (object)ConvertBlock(el) : kv.Value);
         }
 
         return dto;

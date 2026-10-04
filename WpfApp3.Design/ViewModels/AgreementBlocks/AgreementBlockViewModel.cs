@@ -3,6 +3,10 @@ using ProjectName.Models;
 
 namespace ProjectName.Wpf.ViewModels.AgreementBlocks;
 
+/// <summary>
+/// VM-обёртка над доменным IAgreementBlock. Чтение/запись идут напрямую в модель,
+/// поэтому отдельная синхронизация не нужна.
+/// </summary>
 public abstract partial class AgreementBlockViewModel : ObservableObject, IAgreementBlock
 {
     private readonly IAgreementBlock _model;

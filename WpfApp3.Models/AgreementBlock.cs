@@ -1,5 +1,6 @@
 ﻿namespace ProjectName.Models;
 
+/// <summary>Программная сущность, в БД отдельных таблиц не имеет.</summary>
 public class AgreementBlock : IAgreementBlock
 {
     public AgreementRole Role { get; set; }

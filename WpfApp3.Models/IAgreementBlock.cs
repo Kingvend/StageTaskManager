@@ -1,5 +1,8 @@
 ﻿namespace ProjectName.Models;
 
+/// <summary>
+/// Контракт блока согласования. Используется и в доменной модели, и в VM-обёртках.
+/// </summary>
 public interface IAgreementBlock
 {
     AgreementRole Role { get; }
@@ -7,7 +10,5 @@ public interface IAgreementBlock
     string Comment { get; set; }
 
     Dictionary<string, object> ToDictionary();
-
-    /// <summary>Восстанавливает состояние блока из словаря (после чтения черновика).</summary>
     void LoadFrom(IReadOnlyDictionary<string, object> data);
 }

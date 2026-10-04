@@ -2,8 +2,11 @@
 
 public enum ProjectStatus { NotStarted, InProgress, Completed, OnHold, Cancelled }
 public enum StageStatus { NotStarted, InProgress, Completed, OnHold, Cancelled }
-public enum TaskStatus { NotStarted, InProgress, Completed, Blocked }
 
+/// <summary>Статус согласования пары «этап-задача».</summary>
+public enum PairStatus { NotStarted, InProgress, Completed }
+
+/// <summary>Роль, от имени которой выступает вкладка согласования.</summary>
 public enum AgreementRole
 {
     TechnicalSpecialist,
