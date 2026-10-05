@@ -14,6 +14,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IExternalCatalogService _catalog;
     private readonly ICalculationService _calculationService;
     private readonly ICalculationContext _context;
+    private readonly IDraftStorage _draftStorage;
     private readonly IDialogService _dialogService;
 
     [ObservableProperty]
@@ -25,11 +26,13 @@ public partial class MainViewModel : ObservableObject
         IExternalCatalogService catalog,
         ICalculationService calculationService,
         ICalculationContext context,
+        IDraftStorage draftStorage,
         IDialogService dialogService)
     {
         _catalog = catalog;
         _calculationService = calculationService;
         _context = context;
+        _draftStorage = draftStorage;
         _dialogService = dialogService;
     }
 
@@ -38,7 +41,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
-        // Демо: фиксированный projectId; в реальности — из аргументов/внешнего сервиса.
+        // Демо: фиксированный projectId и варианты.
         const long projectId = 101;
         var variantIds = new long[] { 1001, 1002, 1003 };
 
@@ -48,23 +51,65 @@ public partial class MainViewModel : ObservableObject
 
         var variants = await _catalog.GetVariantsAsync(variantIds);
 
-        // 2. Расчёт из нашей БД.
+        // 2. Расчёт из нашей БД (stub).
         var calculation = await _calculationService.GetByProjectAsync(projectId);
-        if (calculation is null)
+
+        // 3. Черновик расчёта с диска.
+        var calculationDraft = await _draftStorage.TryLoadCalculationAsync(projectId);
+
+        // 4. Если расчёта нет ни в БД, ни в черновике — создаём новый в памяти.
+        if (calculation is null && calculationDraft is null)
         {
             calculation = new ProjectCalculation
             {
                 Id = null,
                 Project = project,
                 AvailableVariants = variants.ToList(),
+                StartYear = project.StartDate.Year,
+                EndYear = project.EndDate.Year,
             };
             await FillPairsFromExternalAsync(calculation, variants);
         }
         else
         {
-            // Обновляем кэш внешних данных.
+            // 5. Есть расчёт в БД или в черновике.
+            if (calculation is null)
+            {
+                // Есть только черновик — восстанавливаем из него.
+                calculation = new ProjectCalculation
+                {
+                    Id = null,
+                    Project = project,
+                    AvailableVariants = variants.ToList(),
+                    StartYear = calculationDraft!.StartYear,
+                    EndYear = calculationDraft.EndYear,
+                };
+            }
+            else
+            {
+                // Есть и в БД. Смотрим, что свежее — БД или черновик.
+                var dbUpdated = calculation.UpdatedAt ?? DateTimeOffset.MinValue;
+                var draftSaved = calculationDraft?.SavedAt ?? DateTimeOffset.MinValue;
+
+                if (calculationDraft is not null && draftSaved > dbUpdated)
+                {
+                    calculation.StartYear = calculationDraft.StartYear;
+                    calculation.EndYear = calculationDraft.EndYear;
+                }
+                else if (calculation.StartYear == 0 || calculation.EndYear == 0)
+                {
+                    // В БД не пришли годы — берём из внешних данных.
+                    calculation.StartYear = project.StartDate.Year;
+                    calculation.EndYear = project.EndDate.Year;
+                }
+            }
+
+            // Обновляем кэш внешних данных (по правилам — «свежий побеждает», но Project обычно
+            // из внешнего источника — его мы в кэш всегда берём актуальный).
             calculation.Project = project;
             calculation.AvailableVariants = variants.ToList();
+
+            // Пары: досоздаём недостающие.
             await MergePairsFromExternalAsync(calculation, variants);
         }
 
@@ -74,7 +119,6 @@ public partial class MainViewModel : ObservableObject
         RebuildPairItems(calculation);
         SendForReviewCommand.NotifyCanExecuteChanged();
     }
-
     private async Task FillPairsFromExternalAsync(ProjectCalculation calc, IReadOnlyList<Variant> variants)
     {
         var stages = await _catalog.GetStagesAsync(calc.Project.Id);
@@ -148,6 +192,9 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var vm in PairItems)
             vm.OpenDetailsCommand.NotifyCanExecuteChanged();
+
+        // Ключевой момент: пишем calculation.json, чтобы годы сохранились между запусками.
+        await _draftStorage.SaveCalculationAsync(CurrentCalculation, DateTimeOffset.UtcNow);
     }
 
     // ----- Send for review -----

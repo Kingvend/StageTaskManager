@@ -14,6 +14,9 @@ public class ProjectCalculation
     /// <summary>Кэш доступных вариантов расчёта (из внешнего сервиса).</summary>
     public List<Variant> AvailableVariants { get; set; } = new();
 
+    public int StartYear { get; set; }
+    public int EndYear { get; set; }
+
     /// <summary>
     /// Все пары расчёта. Базовые поля заполнены при загрузке,
     /// <c>VariantData</c> — лениво, при открытии окна деталей.

@@ -7,6 +7,9 @@ public class CalculationDraftDto
     public Guid DraftId { get; set; }
     public DateTimeOffset SavedAt { get; set; }
 
+    public int StartYear { get; set; }
+    public int EndYear { get; set; }
+
     public ProjectSnapshot Project { get; set; } = new();
     public List<VariantSnapshot> AvailableVariants { get; set; } = new();
 }

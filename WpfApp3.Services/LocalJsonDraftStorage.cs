@@ -37,6 +37,10 @@ public class LocalJsonDraftStorage : IDraftStorage
     public async Task SaveCalculationAsync(
         ProjectCalculation calculation, DateTimeOffset savedAt, CancellationToken ct = default)
     {
+        if (calculation.Id is null || calculation.Id == Guid.Empty)
+            throw new InvalidOperationException(
+                "Нельзя сохранить черновик расчёта, пока расчёт не сохранён в БД (Id отсутствует).");
+
         var projectId = calculation.Project.Id;
         var draftId = DraftIdHasher.ComputeCalculationDraftId(projectId);
 
@@ -46,9 +50,20 @@ public class LocalJsonDraftStorage : IDraftStorage
         var dto = new CalculationDraftDto
         {
             DraftId = draftId,
-            CalculationId = calculation.Id ?? Guid.Empty,
+            CalculationId = calculation.Id.Value,
             SavedAt = savedAt,
-            Project = new ProjectSnapshot { /* … */ },
+            StartYear = calculation.StartYear,
+            EndYear = calculation.EndYear,
+            Project = new ProjectSnapshot
+            {
+                Id = calculation.Project.Id,
+                Name = calculation.Project.Name,
+                Description = calculation.Project.Description,
+                StartDate = calculation.Project.StartDate,
+                EndDate = calculation.Project.EndDate,
+                Status = calculation.Project.Status,
+                Responsible = calculation.Project.Responsible,
+            },
             AvailableVariants = calculation.AvailableVariants
                 .OrderBy(v => v.Order)
                 .Select(v => new VariantSnapshot { Id = v.Id, Name = v.Name, Order = v.Order })
@@ -56,17 +71,6 @@ public class LocalJsonDraftStorage : IDraftStorage
         };
 
         var path = Path.Combine(folder, CalculationFile);
-
-        // Файл не перезаписываем, если он уже есть, НО синхронизируем CalculationId —
-        // он может появиться позже (после «Сохранить расчёт»).
-        if (File.Exists(path))
-        {
-            await using var read = File.OpenRead(path);
-            var existing = await JsonSerializer
-                .DeserializeAsync<CalculationDraftDto>(read, JsonOptions, ct).ConfigureAwait(false);
-            if (existing is not null && existing.CalculationId == dto.CalculationId)
-                return;
-        }
 
         await using var stream = File.Create(path);
         await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct).ConfigureAwait(false);
@@ -171,17 +175,22 @@ public class LocalJsonDraftStorage : IDraftStorage
     {
         var result = new Dictionary<string, object>();
         foreach (var prop in el.EnumerateObject())
-        {
-            result[prop.Name] = prop.Value.ValueKind switch
-            {
-                JsonValueKind.True => true,
-                JsonValueKind.False => false,
-                JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
-                JsonValueKind.Number => prop.Value.TryGetInt64(out var l) ? l : prop.Value.GetDouble(),
-                JsonValueKind.Null => string.Empty,
-                _ => prop.Value.GetRawText()
-            };
-        }
+            result[prop.Name] = ConvertValue(prop.Value);
         return result;
     }
+
+    private static object ConvertValue(JsonElement el) => el.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => el.GetString() ?? string.Empty,
+        JsonValueKind.Number => el.TryGetInt64(out var l) ? l
+                              : el.TryGetDecimal(out var d) ? d
+                              : (object)el.GetDouble(),
+        JsonValueKind.Null => string.Empty,
+        JsonValueKind.Object => el.EnumerateObject()
+                                  .ToDictionary(p => p.Name, p => ConvertValue(p.Value)),
+        JsonValueKind.Array => el.EnumerateArray().Select(ConvertValue).ToList(),
+        _ => el.GetRawText()
+    };
 }

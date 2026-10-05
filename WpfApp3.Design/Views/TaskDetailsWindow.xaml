@@ -3,12 +3,34 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ProjectName.Wpf.Views"
         xmlns:vm="clr-namespace:ProjectName.Wpf.ViewModels"
+        xmlns:ab="clr-namespace:ProjectName.Wpf.ViewModels.AgreementBlocks"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:TaskDetailsViewModel}"
         Title="Детали задачи" Width="760" Height="640"
         WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <!-- Явные DataTemplate для конкретных VM-типов блоков -->
+        <DataTemplate DataType="{x:Type ab:TechnicalSpecialistAgreementViewModel}">
+            <views:TechnicalSpecialistView/>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ab:GroupLeadAgreementViewModel}">
+            <views:GroupLeadView/>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ab:BlockLeadAgreementViewModel}">
+            <views:BlockLeadView/>
+        </DataTemplate>
+
+        <!-- Fallback на случай, если что-то не сматчилось -->
+        <DataTemplate DataType="{x:Type ab:AgreementBlockViewModel}">
+            <views:AgreementBlockView/>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -16,7 +38,6 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Заголовок -->
         <StackPanel Grid.Row="0">
             <TextBlock Text="{Binding StageName}" FontWeight="SemiBold" Foreground="#666"/>
             <TextBlock Text="{Binding TaskName}" FontSize="18" FontWeight="Bold"/>
@@ -43,7 +64,9 @@
 
                         <TabControl.ContentTemplate>
                             <DataTemplate>
-                                <views:AgreementBlockView DataContext="{Binding Block}"/>
+                                <!-- ContentControl подберёт DataTemplate по типу Block -->
+                                <ContentControl Content="{Binding Block}"
+                                                Margin="0,8,0,0"/>
                             </DataTemplate>
                         </TabControl.ContentTemplate>
                     </TabControl>
@@ -51,14 +74,11 @@
             </TabControl.ContentTemplate>
         </TabControl>
 
-        <!-- Кнопки -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="Сохранить черновик"
-                    Padding="16,6" Margin="0,0,8,0"
+            <Button Content="Сохранить черновик" Padding="16,6" Margin="0,0,8,0"
                     Command="{Binding SaveDraftCommand}"/>
-            <Button Content="Подтвердить выполнение"
-                    Padding="16,6"
+            <Button Content="Подтвердить выполнение" Padding="16,6"
                     Command="{Binding ConfirmCommand}"/>
         </StackPanel>
     </Grid>

@@ -53,11 +53,14 @@ public partial class TaskDetailsViewModel : ObservableObject
 
     private void BuildTabs()
     {
+        var startYear = _context.Current?.StartYear ?? DateTime.Now.Year;
+        var endYear = _context.Current?.EndYear ?? startYear;
+
         var roles = new (AgreementRole Role, string Display)[]
         {
-            (AgreementRole.TechnicalSpecialist, "Технический специалист"),
-            (AgreementRole.GroupLead,           "Руководитель группы"),
-            (AgreementRole.BlockLead,           "Руководитель блока"),
+        (AgreementRole.TechnicalSpecialist, "Технический специалист"),
+        (AgreementRole.GroupLead,           "Руководитель группы"),
+        (AgreementRole.BlockLead,           "Руководитель блока"),
         };
 
         foreach (var (role, display) in roles)
@@ -66,19 +69,19 @@ public partial class TaskDetailsViewModel : ObservableObject
 
             foreach (var variant in Pair.AvailableVariants.OrderBy(v => v.Order))
             {
-                // Гарантируем, что под этот вариант в памяти есть TaskModel и блок роли.
                 if (!Pair.VariantData.TryGetValue(variant, out var taskModel))
                 {
                     taskModel = new TaskModel { Variant = variant };
                     Pair.VariantData[variant] = taskModel;
                 }
+
                 if (!taskModel.Blocks.TryGetValue(role, out var modelBlock))
                 {
-                    modelBlock = new AgreementBlock { Role = role };
+                    modelBlock = CreateDomainBlock(role);
                     taskModel.Blocks[role] = modelBlock;
                 }
 
-                var vmBlock = CreateBlockVm(role, modelBlock);
+                var vmBlock = CreateBlockVm(role, modelBlock, startYear, endYear);
                 ((ObservableObject)vmBlock).PropertyChanged += OnBlockPropertyChanged;
 
                 roleTab.Variants.Add(new VariantBlockViewModel(variant, vmBlock));
@@ -88,13 +91,22 @@ public partial class TaskDetailsViewModel : ObservableObject
         }
     }
 
-    private static AgreementBlockViewModel CreateBlockVm(AgreementRole role, IAgreementBlock model) => role switch
+    private static IAgreementBlock CreateDomainBlock(AgreementRole role) => role switch
     {
-        AgreementRole.TechnicalSpecialist => new TechnicalSpecialistAgreementViewModel(model),
-        AgreementRole.GroupLead => new GroupLeadAgreementViewModel(model),
-        AgreementRole.BlockLead => new BlockLeadAgreementViewModel(model),
+        AgreementRole.TechnicalSpecialist => new TechnicalSpecialistBlock { Role = role },
+        AgreementRole.GroupLead => new GroupLeadBlock { Role = role },
+        AgreementRole.BlockLead => new BlockLeadBlock { Role = role },
         _ => throw new ArgumentOutOfRangeException(nameof(role)),
     };
+
+    private static AgreementBlockViewModel CreateBlockVm(
+        AgreementRole role, IAgreementBlock model, int startYear, int endYear) => role switch
+        {
+            AgreementRole.TechnicalSpecialist => new TechnicalSpecialistAgreementViewModel((TechnicalSpecialistBlock)model),
+            AgreementRole.GroupLead => new GroupLeadAgreementViewModel((GroupLeadBlock)model),
+            AgreementRole.BlockLead => new BlockLeadAgreementViewModel((BlockLeadBlock)model, startYear, endYear),
+            _ => throw new ArgumentOutOfRangeException(nameof(role)),
+        };
 
     // ----- Реакция на изменения -----
 

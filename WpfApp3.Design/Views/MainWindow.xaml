@@ -32,24 +32,14 @@
 
                     <UniformGrid Columns="2">
                         <StackPanel Margin="0,0,8,4">
-                            <TextBlock Text="Название" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding CurrentCalculation.Project.Name}"/>
+                            <TextBlock Text="Год начала" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding CurrentCalculation.StartYear, UpdateSourceTrigger=PropertyChanged}"
+             Width="100" HorizontalAlignment="Left"/>
                         </StackPanel>
                         <StackPanel Margin="0,0,0,4">
-                            <TextBlock Text="Ответственный" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding CurrentCalculation.Project.Responsible}"/>
-                        </StackPanel>
-                        <StackPanel Margin="0,0,8,4">
-                            <TextBlock Text="Дата начала" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding CurrentCalculation.Project.StartDate, StringFormat=d}"/>
-                        </StackPanel>
-                        <StackPanel Margin="0,0,0,4">
-                            <TextBlock Text="Дата окончания" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding CurrentCalculation.Project.EndDate, StringFormat=d}"/>
-                        </StackPanel>
-                        <StackPanel Margin="0,0,8,4">
-                            <TextBlock Text="Статус" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding CurrentCalculation.Project.Status}"/>
+                            <TextBlock Text="Год окончания" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding CurrentCalculation.EndYear, UpdateSourceTrigger=PropertyChanged}"
+             Width="100" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </UniformGrid>
 

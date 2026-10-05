@@ -40,7 +40,7 @@ public abstract partial class AgreementBlockViewModel : ObservableObject, IAgree
 
     public Dictionary<string, object> ToDictionary() => _model.ToDictionary();
 
-    public void LoadFrom(IReadOnlyDictionary<string, object> data)
+    virtual public void LoadFrom(IReadOnlyDictionary<string, object> data)
     {
         _model.LoadFrom(data);
         OnPropertyChanged(nameof(IsAgreed));

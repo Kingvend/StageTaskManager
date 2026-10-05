@@ -1,0 +1,25 @@
+﻿<UserControl x:Class="ProjectName.Wpf.Views.TechnicalSpecialistView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <CheckBox Content="Согласовать" IsChecked="{Binding IsAgreed}"/>
+
+        <TextBlock Text="Параметр 1" Margin="0,12,0,4"/>
+        <TextBox Text="{Binding Parameter1, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <TextBlock Text="Параметр 2" Margin="0,8,0,4"/>
+        <TextBox Text="{Binding Parameter2, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <TextBlock Text="Параметр 3" Margin="0,8,0,4"/>
+        <TextBox Text="{Binding Parameter3, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <TextBlock Text="Уровень" Margin="0,8,0,4"/>
+        <ComboBox ItemsSource="{Binding Options}"
+                  SelectedItem="{Binding SelectedOption}"/>
+
+        <TextBlock Text="Комментарий" Margin="0,12,0,4"/>
+        <TextBox Text="{Binding Comment, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True" TextWrapping="Wrap"
+                 Height="80" VerticalScrollBarVisibility="Auto"/>
+    </StackPanel>
+</UserControl>
