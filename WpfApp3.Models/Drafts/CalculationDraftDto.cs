@@ -4,6 +4,7 @@
 public class CalculationDraftDto
 {
     public Guid CalculationId { get; set; }
+    public Guid DraftId { get; set; }
     public DateTimeOffset SavedAt { get; set; }
 
     public ProjectSnapshot Project { get; set; } = new();

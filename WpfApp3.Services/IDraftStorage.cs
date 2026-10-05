@@ -1,23 +1,22 @@
 ﻿using ProjectName.Models;
 using ProjectName.Models.Drafts;
 
-namespace ProjectName.Services;
-
 public interface IDraftStorage
 {
-    /// <summary>Создаёт calculation.json, если файла ещё нет. Без пар.</summary>
+    /// <summary>Пишет calculation.json в папку drafts/{CalculationDraftId}/.</summary>
     Task SaveCalculationAsync(
         ProjectCalculation calculation, DateTimeOffset savedAt, CancellationToken ct = default);
 
-    /// <summary>Перезаписывает {draftId}.json — данные пары со всеми вариантами.</summary>
+    /// <summary>Пишет {PairDraftId}.json.</summary>
     Task SavePairAsync(
-        StageTaskPair pair, DateTimeOffset savedAt, CancellationToken ct = default);
+        ProjectCalculation calculation, StageTaskPair pair,
+        DateTimeOffset savedAt, CancellationToken ct = default);
 
-    /// <summary>Читает calculation.json. null, если файла нет.</summary>
+    /// <summary>Читает calculation.json. null, если файла нет или DraftId не совпадает.</summary>
     Task<CalculationDraftDto?> TryLoadCalculationAsync(
-        Guid calculationId, CancellationToken ct = default);
+        long projectId, CancellationToken ct = default);
 
-    /// <summary>Читает {draftId}.json. null, если файла нет.</summary>
+    /// <summary>Читает {PairDraftId}.json.</summary>
     Task<PairDraftDto?> TryLoadPairAsync(
-        Guid calculationId, Guid draftId, CancellationToken ct = default);
+        long projectId, long stageId, long taskId, CancellationToken ct = default);
 }

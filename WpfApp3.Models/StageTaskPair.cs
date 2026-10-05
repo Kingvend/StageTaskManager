@@ -8,9 +8,6 @@ public class StageTaskPair
     /// <summary>Guid из нашей БД. Guid.Empty, пока пара не сохранена.</summary>
     public Guid Id { get; set; } = Guid.Empty;
 
-    /// <summary>Детерминированный Guid для имени файла черновика. null, пока нет CalculationId.</summary>
-    public Guid? DraftId { get; set; }
-
     /// <summary>Ссылка на расчёт. null, пока расчёт не сохранён в БД.</summary>
     public Guid? CalculationId { get; set; }
 

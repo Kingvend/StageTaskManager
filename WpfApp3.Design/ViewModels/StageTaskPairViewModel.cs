@@ -33,14 +33,6 @@ public partial class StageTaskPairViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenDetailsAsync()
     {
-        if (Pair.CalculationId is null)
-        {
-            _dialogService.ShowMessage(
-                "Сначала сохраните расчёт (кнопка «Сохранить расчёт» в блоке данных проекта).",
-                "Расчёт не сохранён");
-            return;
-        }
-
         _dialogService.ShowTaskDetails(Pair);
 
         OnPropertyChanged(nameof(Status));

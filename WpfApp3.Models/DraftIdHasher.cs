@@ -9,11 +9,18 @@ namespace ProjectName.Models;
 /// </summary>
 public static class DraftIdHasher
 {
-    public static Guid Compute(Guid calculationId, long stageId, long taskId)
+    /// <summary>DraftId расчёта. Детерминирован от ProjectId.</summary>
+    public static Guid ComputeCalculationDraftId(long projectId)
+        => Compute($"calculation|{projectId}");
+
+    /// <summary>DraftId пары. Детерминирован от CalculationDraftId + Stage + Task.</summary>
+    public static Guid ComputePairDraftId(Guid calculationDraftId, long stageId, long taskId)
+        => Compute($"pair|{calculationDraftId:D}|{stageId}|{taskId}");
+
+    private static Guid Compute(string input)
     {
-        var input = $"{calculationId:D}|{stageId}|{taskId}";
-        var bytes = Encoding.UTF8.GetBytes(input);
-        var hash = MD5.HashData(bytes);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
+        var hash = System.Security.Cryptography.MD5.HashData(bytes);
         return new Guid(hash);
     }
 }

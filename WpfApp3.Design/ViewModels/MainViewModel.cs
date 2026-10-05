@@ -105,9 +105,9 @@ public partial class MainViewModel : ObservableObject
     }
 
     private static StageTaskPair CreatePair(
-        ProjectCalculation calc, Stage stage, ProjectTask task, IReadOnlyList<Variant> variants)
+    ProjectCalculation calc, Stage stage, ProjectTask task, IReadOnlyList<Variant> variants)
     {
-        var pair = new StageTaskPair
+        return new StageTaskPair
         {
             Id = Guid.Empty,
             CalculationId = calc.Id,
@@ -117,10 +117,7 @@ public partial class MainViewModel : ObservableObject
             Task = task,
             AvailableVariants = variants.ToList(),
             Status = PairStatus.NotStarted,
-        };
-        if (calc.Id is not null)
-            pair.DraftId = DraftIdHasher.Compute(calc.Id.Value, stage.Id, task.Id);
-        return pair;
+};
     }
 
     private void RebuildPairItems(ProjectCalculation calc)
@@ -146,14 +143,9 @@ public partial class MainViewModel : ObservableObject
 
         var id = await _calculationService.SaveCalculationAsync(CurrentCalculation);
 
-        // После сохранения расчёта можно вычислить DraftId для всех пар.
         foreach (var pair in CurrentCalculation.Pairs)
-        {
             pair.CalculationId = id;
-            pair.DraftId = DraftIdHasher.Compute(id, pair.StageId, pair.TaskId);
-        }
 
-        // Обновим карточки — теперь доступны «Открыть детали» и «Сохранить черновик».
         foreach (var vm in PairItems)
             vm.OpenDetailsCommand.NotifyCanExecuteChanged();
     }

@@ -124,35 +124,27 @@ public partial class TaskDetailsViewModel : ObservableObject
         if (_initialized) return;
         _initialized = true;
 
-        // In-memory всегда побеждает: если в сессии уже что-то заполнено — не трогаем.
         if (HasDataInMemory()) return;
 
-        // Из БД (ленивая загрузка пары с VariantData).
         StageTaskPair? fromDb = null;
         if (Pair.Id != Guid.Empty)
             fromDb = await _calculationService.GetPairAsync(Pair.Id);
 
-        // Из черновика.
         PairDraftDto? draft = null;
-        if (Pair.CalculationId is not null && Pair.DraftId is not null)
-            draft = await _draftStorage.TryLoadPairAsync(Pair.CalculationId.Value, Pair.DraftId.Value);
+        if (_context.Current is not null)
+            draft = await _draftStorage.TryLoadPairAsync(
+                _context.Current.Project.Id, Pair.StageId, Pair.TaskId);
 
-        // Выбор более свежего источника.
+        // Приоритет по SavedAt — как раньше.
         if (fromDb is not null && draft is not null)
         {
-            if ((draft.SavedAt) >= (fromDb.UpdatedAt ?? DateTimeOffset.MinValue))
+            if (draft.SavedAt >= (fromDb.UpdatedAt ?? DateTimeOffset.MinValue))
                 ApplyDraft(draft);
             else
                 ApplyDbPair(fromDb);
         }
-        else if (draft is not null)
-        {
-            ApplyDraft(draft);
-        }
-        else if (fromDb is not null)
-        {
-            ApplyDbPair(fromDb);
-        }
+        else if (draft is not null) ApplyDraft(draft);
+        else if (fromDb is not null) ApplyDbPair(fromDb);
 
         RecalculateCanConfirm();
     }
@@ -203,23 +195,23 @@ public partial class TaskDetailsViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
-        if (Pair.CalculationId is null || Pair.DraftId is null) return;
         if (_context.Current is null) return;
 
         var savedAt = DateTimeOffset.UtcNow;
-
-        // calculation.json — создаётся один раз, при первом сохранении черновика.
-        // Метод внутри уже проверяет File.Exists и не перезаписывает существующий файл.
         await _draftStorage.SaveCalculationAsync(_context.Current, savedAt);
-
-        // {PairDraftId}.json — перезаписывается каждый раз.
-        await _draftStorage.SavePairAsync(Pair, savedAt);
+        await _draftStorage.SavePairAsync(_context.Current, Pair, savedAt);
     }
 
     [RelayCommand(CanExecute = nameof(CanConfirm))]
     private async Task ConfirmAsync()
     {
-        await SaveDraftAsync();
+        if (_context.Current is not null)
+        {
+            var savedAt = DateTimeOffset.UtcNow;
+            await _draftStorage.SaveCalculationAsync(_context.Current, savedAt);
+            await _draftStorage.SavePairAsync(_context.Current, Pair, savedAt);
+        }
+
         Pair.Status = PairStatus.Completed;
         RequestClose?.Invoke(this, true);
     }
