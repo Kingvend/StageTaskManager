@@ -7,14 +7,20 @@ public class BlockLeadBlock : AgreementBlock
     public override Dictionary<string, object> ToDictionary()
     {
         var d = base.ToDictionary();
+
+        // Сохраняем только заполненные ячейки. Пустые пропускаем.
         d["BusinessPlan"] = BusinessPlan
-            .Select(e => (object)new Dictionary<string, object>
+            .Where(e => e.Value.HasValue)
+            .GroupBy(e => e.Indicator)
+            .Select(g => (object)new Dictionary<string, object>
             {
-                ["Indicator"] = e.Indicator,
-                ["Year"] = e.Year,
-                ["Value"] = e.Value,
+                ["Indicator"] = g.Key,
+                ["Values"] = g.ToDictionary(
+                    e => e.Year.ToString(),
+                    e => (object)e.Value!.Value),
             })
             .ToList();
+
         return d;
     }
 
@@ -30,40 +36,37 @@ public class BlockLeadBlock : AgreementBlock
         {
             if (item is not IReadOnlyDictionary<string, object> dict) continue;
 
-            BusinessPlan.Add(new BusinessPlanEntry
+            var indicator = GetString(dict, "Indicator");
+            if (string.IsNullOrEmpty(indicator)) continue;
+
+            if (!dict.TryGetValue("Values", out var v) || v is not IReadOnlyDictionary<string, object> values)
+                continue;
+
+            foreach (var kv in values)
             {
-                Indicator = GetString(dict, "Indicator"),
-                Year = GetInt(dict, "Year"),
-                Value = GetDecimal(dict, "Value"),
-            });
+                if (!int.TryParse(kv.Key, out var year)) continue;
+
+                var value = ToNullableDecimal(kv.Value);
+                if (!value.HasValue) continue;   // защита от мусора
+
+                BusinessPlan.Add(new BusinessPlanEntry
+                {
+                    Indicator = indicator,
+                    Year = year,
+                    Value = value,
+                });
+            }
         }
     }
 
-    private static int GetInt(IReadOnlyDictionary<string, object> d, string key)
+    private static decimal? ToNullableDecimal(object? v) => v switch
     {
-        if (!d.TryGetValue(key, out var v) || v is null) return 0;
-        return v switch
-        {
-            int i => i,
-            long l => (int)l,
-            double db => (int)db,
-            decimal m => (int)m,
-            string s => int.TryParse(s, out var r) ? r : 0,
-            _ => 0,
-        };
-    }
-
-    private static decimal GetDecimal(IReadOnlyDictionary<string, object> d, string key)
-    {
-        if (!d.TryGetValue(key, out var v) || v is null) return 0m;
-        return v switch
-        {
-            decimal m => m,
-            int i => i,
-            long l => l,
-            double db => (decimal)db,
-            string s => decimal.TryParse(s, out var r) ? r : 0m,
-            _ => 0m,
-        };
-    }
+        null => null,
+        decimal m => m,
+        int i => i,
+        long l => l,
+        double db => (decimal)db,
+        string s => decimal.TryParse(s, out var r) ? r : null,
+        _ => null,
+    };
 }

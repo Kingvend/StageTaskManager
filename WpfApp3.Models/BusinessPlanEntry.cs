@@ -1,9 +1,8 @@
-﻿namespace ProjectName.Models
+﻿namespace ProjectName.Models;
+
+public class BusinessPlanEntry
 {
-    public class BusinessPlanEntry
-    {
-        public string Indicator { get; set; } = string.Empty;
-        public int Year { get; set; }
-        public decimal Value { get; set; }
-    }
+    public string Indicator { get; set; } = string.Empty;
+    public int Year { get; set; }
+    public decimal? Value { get; set; } 
 }
